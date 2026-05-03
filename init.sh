@@ -16,7 +16,8 @@ sudo apt install -y keepalived
 sudo useradd -r -s /sbin/nologin keepalived_script 2>/dev/null || true
 
 # Create a dedicated user for the nginx container (avoids UID 101 collision with messagebus)
-sudo useradd -r -u 10101 -s /sbin/nologin nginx-lb 2>/dev/null || true
+sudo groupadd -g 10101 nginx-lb 2>/dev/null || true
+sudo useradd -r -u 10101 -g 10101 -s /sbin/nologin nginx-lb 2>/dev/null || true
 
 # Validate .env variables
 for var in NODE_ROLE DATAPLANE_VIP DATAPLANE_IP_PRIMARY DATAPLANE_IP_BACKUP \
@@ -38,13 +39,17 @@ case "$NODE_ROLE" in
     ;;
 esac
 
-# preparing directories:
-mkdir -p $(pwd)/nginx-data/logs $(pwd)/nginx-data/cache
-sudo chown -R 10101:10101 $(pwd)/nginx-data
+
 
 # Allow Docker to bind to the VIP even if this node is currently the BACKUP
 sudo sysctl -w net.ipv4.ip_nonlocal_bind=1
-echo "net.ipv4.ip_nonlocal_bind=1" | sudo tee -a /etc/sysctl.conf > /dev/null
+grep -q 'net.ipv4.ip_nonlocal_bind=1' /etc/sysctl.conf || \
+    echo "net.ipv4.ip_nonlocal_bind=1" | sudo tee -a /etc/sysctl.conf > /dev/null
+
+# Install logrotate configuration
+sudo cp "$(pwd)/cyberark-nginx" /etc/logrotate.d/cyberark-nginx
+sudo chmod 644 /etc/logrotate.d/cyberark-nginx
+sudo chown root:root /etc/logrotate.d/cyberark-nginx
 
 # Render configs and start services
 "$(dirname "$0")/runUpdate.sh"
