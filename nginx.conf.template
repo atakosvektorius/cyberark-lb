@@ -1,0 +1,90 @@
+# /etc/nginx/nginx.conf (template – variables resolved by envsubst at container start)
+
+# ==========================================
+# Core Settings
+# ==========================================
+# user nginx;
+worker_processes auto;                 # Automatically match the number of CPU cores
+worker_rlimit_nofile 65535;            # Allows a high number of open file descriptors
+error_log /var/log/nginx/error.log notice;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 4096;           # Max simultaneous connections per worker
+    use epoll;                         # Efficient event model on Linux
+    multi_accept on;                   # Accept multiple connections per wake-up
+}
+
+# ==========================================
+# Layer 4 TCP Stream Configuration
+# ==========================================
+stream {
+    # ----------------------------------------------------
+    # 1. CyberArk PVWA (HTTPS - Port 443)
+    # ----------------------------------------------------
+    upstream pvwa_servers {
+        # Consistent hashing maps clients to the same server to maintain HTTPS session cookies
+        hash $remote_addr consistent;
+        
+        # 30-second penalty box if a server fails to connect twice
+        server ${PVWA_UPSTREAM_1}:443 max_fails=2 fail_timeout=30s;
+        server ${PVWA_UPSTREAM_2}:443 max_fails=2 fail_timeout=30s;
+    }
+
+    server {
+        # Bind to internal port (mapped from VIP via Docker)
+        listen 8443;
+        proxy_pass pvwa_servers;
+        
+        # Timeouts: Quick failover, standard idle limit for web traffic
+        proxy_connect_timeout 3s;
+        proxy_timeout 120s;
+    }
+
+    # ----------------------------------------------------
+    # 2. CyberArk PSM (RDP - Port 3389)
+    # ----------------------------------------------------
+    upstream psm_servers {
+        # RDP doesn't need stickiness. least_conn perfectly balances long-lived connections.
+        least_conn;
+        
+        server ${PSM_UPSTREAM_1}:3389 max_fails=2 fail_timeout=30s;
+        server ${PSM_UPSTREAM_2}:3389 max_fails=2 fail_timeout=30s;
+    }
+
+    server {
+        # Bind to internal port and enable OS-level TCP Keepalives (idle 60s, ping every 15s, drop after 3 missed)
+        listen 3389 so_keepalive=60s:15s:3;
+        proxy_pass psm_servers;
+        
+        # Enable TCP keepalive to the upstream PSM server
+        proxy_socket_keepalive on;
+        
+        # Timeouts: Quick failover for new connections, hold established connections for 2 hours
+        proxy_connect_timeout 3s;
+        proxy_timeout 2h;
+    }
+
+    # ----------------------------------------------------
+    # 3. CyberArk PSMP (SSH - Port 22)
+    # ----------------------------------------------------
+    upstream psmp_servers {
+        # SSH balances exactly the same way as RDP
+        least_conn;
+        
+        server ${PSMP_UPSTREAM_1}:22 max_fails=2 fail_timeout=30s;
+        server ${PSMP_UPSTREAM_2}:22 max_fails=2 fail_timeout=30s;
+    }
+
+    server {
+        # Bind to internal port and enable OS-level TCP Keepalives
+        listen 2222 so_keepalive=60s:15s:3;
+        proxy_pass psmp_servers;
+        
+        proxy_socket_keepalive on;
+        
+        # Timeouts: 3 seconds to connect, 2 hours of absolute idle time allowed
+        proxy_connect_timeout 3s;
+        proxy_timeout 2h;
+    }
+}

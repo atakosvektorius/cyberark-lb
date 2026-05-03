@@ -1,0 +1,14 @@
+# /etc/logrotate.d/cyberark-nginx
+/home/pam/cyberARK-lb/nginx-data/logs/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 0640 101 101
+    sharedscripts
+    postrotate
+        docker exec cyberark-lb sh -c "kill -USR1 \$(cat /var/run/nginx.pid)"
+    endscript
+}

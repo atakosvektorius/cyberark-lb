@@ -1,0 +1,33 @@
+services:
+  nginx-lb:
+    image: nginx:1.30.0
+    container_name: cyberark-lb
+    restart: unless-stopped
+    user: "10101:10101"
+    read_only: true
+
+    ports:
+      # ── Dataplan / user-facing ──
+      # Bind exclusively to the Virtual IP (VIP)
+      - "${DATAPLANE_VIP}:443:8443"     # PVWA HTTPS 
+      - "${DATAPLANE_VIP}:3389:3389"    # PSM (RDP)
+      - "${DATAPLANE_VIP}:2222:2222"    # PSMP (SSH) 
+    
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx-data/logs:/var/log/nginx
+      - ./nginx-data/cache:/var/cache/nginx
+
+    tmpfs:
+      - /var/run:uid=10101,gid=10101   # nginx PID file only, in-memory
+      
+    networks:
+      dataplan:
+        ipv4_address: 172.20.0.10
+
+networks:
+  dataplan:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24

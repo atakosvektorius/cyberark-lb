@@ -1,0 +1,36 @@
+global_defs {
+    vrrp_strict off
+    enable_script_security
+    script_user keepalived_script   
+}
+
+vrrp_script chk_lb {
+    script "/usr/bin/nc -zvw 1 172.20.0.10 8443"
+    timeout 2
+    interval 3
+    fall 2
+    rise 2
+}
+
+vrrp_instance VI_1 {
+    state BACKUP
+    interface eth0
+    virtual_router_id 69
+    priority 90              # (Backup)
+    nopreempt
+    
+    unicast_src_ip ${DATAPLANE_IP_BACKUP}
+    unicast_peer {
+        ${DATAPLANE_IP_PRIMARY}
+    }
+
+
+    track_script {
+        chk_lb
+    }
+
+
+    virtual_ipaddress {
+        ${DATAPLANE_VIP}/24
+    }
+}
