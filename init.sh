@@ -52,4 +52,5 @@ sudo chmod 644 /etc/logrotate.d/cyberark-nginx
 sudo chown root:root /etc/logrotate.d/cyberark-nginx
 
 # Render configs and start services
-"$(dirname "$0")/runUpdate.sh"
+chmod +x ./runUpdate.sh
+./runUpdate.sh
